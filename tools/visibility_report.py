@@ -62,7 +62,7 @@ def percentage(value: int, total: int) -> str:
     return f"{100 * value / total:.0f}%" if total else "-"
 
 
-def render_markdown(report: dict, comparison: dict | None) -> str:
+def render_markdown(report: dict, comparison: dict | None, sort_by: str = "mine") -> str:
     people = report["people"]
     lines = [
         "# Visibility report",
@@ -95,7 +95,9 @@ def render_markdown(report: dict, comparison: dict | None) -> str:
             mine_rate = 100 * mine["v1_occluded"] / mine_total if mine_total else 0.0
             their_rate = 100 * theirs["v1_occluded"] / their_total if their_total else 0.0
             rows.append((abs(mine_rate - their_rate), mine, mine_rate, their_rate))
-        for gap, row, mine_rate, their_rate in sorted(rows, key=lambda item: -item[0]):
+        
+        sort_key = (lambda item: (-item[2], -item[0])) if sort_by == "mine" else (lambda item: (-item[0], -item[2]))
+        for gap, row, mine_rate, their_rate in sorted(rows, key=sort_key):
             lines.append(
                 f"| {row['index']} | {row['name']} | {mine_rate:.0f}% | {their_rate:.0f}% | {gap:.0f} |"
             )
@@ -120,6 +122,7 @@ def main() -> int:
     parser.add_argument("--compare", type=Path, default=None, help="thư mục nhãn của người khác để so")
     parser.add_argument("--out", type=Path, default=Path("outputs/visibility_report.json"))
     parser.add_argument("--markdown", type=Path, default=Path("reports/visibility_report.md"))
+    parser.add_argument("--sort", type=str, choices=["mine", "gap"], default="mine", help="sắp xếp theo mine (%v=1 bạn giảm dần) hoặc gap (độ lệch)")
     arguments = parser.parse_args()
 
     try:
@@ -137,7 +140,7 @@ def main() -> int:
     payload = {"report": report, "comparison": comparison}
     arguments.out.parent.mkdir(parents=True, exist_ok=True)
     arguments.out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    markdown = render_markdown(report, comparison)
+    markdown = render_markdown(report, comparison, sort_by=arguments.sort)
     arguments.markdown.parent.mkdir(parents=True, exist_ok=True)
     arguments.markdown.write_text(markdown, encoding="utf-8")
 

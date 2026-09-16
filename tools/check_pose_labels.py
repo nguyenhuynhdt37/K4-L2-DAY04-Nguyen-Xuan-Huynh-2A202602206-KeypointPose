@@ -19,9 +19,17 @@ from poselib import (KEYPOINT_NAMES, NUM_KEYPOINTS, OCCLUDED, OUTSIDE, VISIBLE, 
                      LabelFormatError, image_paths, image_size, parse_yolo_pose_file)
 
 EPSILON = 1e-6
+EDGE_MARGIN = 0.03
 
 
-def touches_image_edge(person, margin: float = 0.02) -> bool:
+def touches_image_edge(person, margin: float = EDGE_MARGIN) -> bool:
+    """Coi box là sát biên nếu cách một mép không quá ``margin``.
+
+    CVAT thường tạo box khít theo các keypoint còn hiện diện. Sau khi chuẩn hoá
+    và làm tròn lúc export, một box của người bị cắt có thể dừng cách mép ảnh
+    1-2 pixel. Vùng đệm 3% tránh kết luận nhầm các trường hợp sát biên đó là
+    "người nằm gọn trong ảnh".
+    """
     center_x, center_y, box_width, box_height = person.box
     return (center_x - box_width / 2 <= margin or center_y - box_height / 2 <= margin
             or center_x + box_width / 2 >= 1 - margin or center_y + box_height / 2 >= 1 - margin)
@@ -51,13 +59,14 @@ def check_person(person, stem: str, others: list) -> tuple[list[str], list[str]]
         errors.append(f"{where}: cả 17 khớp đều v=0 - skeleton này sẽ bị loại khỏi mọi phép chấm")
 
     # Lỗi số 3 của slide 46: xoá khớp bị che thay vì gắn cờ v=1.
-    # Chỉ cảnh báo khi box nằm gọn trong ảnh: lúc đó khớp KHÔNG THỂ "ra ngoài khung",
-    # nên v=0 hàng loạt gần như chắc chắn là đã xoá khớp bị che.
+    # Chỉ cảnh báo khi box cách xa mọi mép ảnh. Đây vẫn là heuristic: script chỉ
+    # thấy box và keypoint, không thể hiểu hình dáng người như khi nhìn ảnh.
     hidden = NUM_KEYPOINTS - person.num_keypoints
     if hidden >= 4 and not touches_image_edge(person):
         warnings.append(
-            f"{where}: có {hidden} khớp v=0 trong khi cả người nằm gọn giữa ảnh. "
-            "Khớp không ra khỏi khung được thì phải là v=1 (bị che, vẫn đặt chấm), không phải v=0"
+            f"{where}: có {hidden} khớp v=0 nhưng box cách mọi mép ảnh trên "
+            f"{EDGE_MARGIN:.0%}. Hãy mở ảnh kiểm tra: khớp bị che nhưng vẫn ở trong ảnh phải là "
+            "v=1; chỉ khớp thật sự ra ngoài ảnh mới là v=0"
         )
 
     # Lượt hình dáng, làm bằng số: vai trái/phải và hông trái/phải không được cắt chéo.
